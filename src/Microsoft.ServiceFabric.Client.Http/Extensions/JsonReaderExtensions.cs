@@ -9,7 +9,9 @@ namespace Microsoft.ServiceFabric.Client.Http
     using System.Collections.Generic;
     using System.Globalization;
     using System.Xml;
+    using Microsoft.ServiceFabric.Common;
     using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
 
     /// <summary>
     /// Defines extension methods for JsonReader.
@@ -519,6 +521,35 @@ namespace Microsoft.ServiceFabric.Client.Http
                 return obj;
             }
 
+            // Keep runtime wire-name aliases outside the generated converters.
+            if (typeof(T) == typeof(ApplicationTypeInfo) ||
+                typeof(T) == typeof(ManagedKeyVaultReferenceParameter))
+            {
+                var json = JObject.Load(reader);
+                if (typeof(T) == typeof(ApplicationTypeInfo))
+                {
+                    NormalizePropertyAlias(json, "ManagedKeyVaultReferenceParameterList", "ManagedKeyVaultReferenceParameters");
+                }
+                else
+                {
+                    NormalizePropertyAlias(json, "ApplicationIdentityRef", "ApplicationIdentityReference");
+                }
+
+                using (var normalizedReader = json.CreateReader())
+                {
+                    normalizedReader.ReadStartObject();
+                    if (normalizedReader.TokenType != JsonToken.EndObject)
+                    {
+                        obj = getFromJsonPropertiesFunc.Invoke(normalizedReader);
+                    }
+
+                    normalizedReader.ReadEndObject();
+                }
+
+                reader.Read();
+                return obj;
+            }
+
             // handle Empty Json.
             reader.ReadStartObject();
             if (reader.TokenType.Equals(JsonToken.EndObject))
@@ -531,6 +562,44 @@ namespace Microsoft.ServiceFabric.Client.Http
             obj = getFromJsonPropertiesFunc.Invoke(reader);
             reader.ReadEndObject();
             return obj;
+        }
+
+        /// <summary>
+        /// Maps a runtime property alias to the name expected by the generated converter.
+        /// </summary>
+        /// <param name="json">The object being deserialized.</param>
+        /// <param name="aliasName">An alternate runtime property name.</param>
+        /// <param name="propertyName">The property name declared in the client model.</param>
+        private static void NormalizePropertyAlias(JObject json, string aliasName, string propertyName)
+        {
+            JProperty property = null;
+            foreach (var candidate in new List<JProperty>(json.Properties()))
+            {
+                if (!string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(candidate.Name, aliasName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (property == null)
+                {
+                    property = candidate;
+                }
+                else
+                {
+                    if (!JToken.DeepEquals(property.Value, candidate.Value))
+                    {
+                        throw new JsonReaderException($"Conflicting values for JSON properties '{propertyName}' and '{aliasName}'.");
+                    }
+
+                    candidate.Remove();
+                }
+            }
+
+            if (property != null && property.Name != propertyName)
+            {
+                property.Replace(new JProperty(propertyName, property.Value));
+            }
         }
 
         /// <summary>
