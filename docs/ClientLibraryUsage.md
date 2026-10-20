@@ -24,6 +24,23 @@ Nuget Package Version | Compatible Service Fabric Runtime version
 1.0.0-preview59 - 1.0.0-preview61 | >=6.3
 1.0.0-preview58 | >=6.2
 
+### Managed Key Vault reference response compatibility
+
+Application type responses use different Managed Key Vault reference property names
+across runtime versions. The HTTP client accepts both
+`ManagedKeyVaultReferenceParameters` and `ManagedKeyVaultReferenceParameterList`,
+mapping either to `ApplicationTypeInfo.ManagedKeyVaultReferenceParameters`.
+Within each entry, it accepts both `ApplicationIdentityReference` and
+`ApplicationIdentityRef`, mapping either to
+`ManagedKeyVaultReferenceParameter.ApplicationIdentityReference`.
+
+These aliases are handled in the non-generated deserialization helpers so that
+regenerating the converters does not remove compatibility. Property matching
+remains case-insensitive. If both spellings occur, their JSON values must be
+identical; conflicting values are rejected rather than selecting one by property
+order. Serialization continues to emit only the names declared in the client
+model. Missing and null collections retain their existing behavior.
+
 
 ## Using the Client Library
 ### Connecting to unsecured cluster
